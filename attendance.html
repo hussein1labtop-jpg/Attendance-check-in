@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تسجيل حضور الطلاب</title>
+<style>
+:root{
+  --paper:#f2f5f8;--panel:#fff;--ink:#1c2740;--mut:#63708a;--line:#d3dbe6;
+  --accent:#1d5f8a;--accent-d:#164a6c;
+  --ok:#1b7a4b;--ok-bg:#e6f4ec;--no:#b8322a;--no-bg:#fbeceb;--head:#e8eef5;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 "Segoe UI",Tahoma,"Noto Sans Arabic",Arial,sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:16px 14px 60px}
+header.top{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:8px 2px 14px;border-bottom:3px double var(--ink);margin-bottom:18px}
+h1{margin:0;font:700 27px/1.3 "Amiri","Traditional Arabic","Noto Naskh Arabic",serif}
+#todayLabel{color:var(--mut);font-size:14px}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;margin-bottom:16px}
+.panel>h2{margin:0;padding:10px 14px;font-size:17px;border-bottom:1px solid var(--line);background:var(--head);border-radius:6px 6px 0 0}
+.body{padding:12px 14px}
+
+input,textarea,select{font:inherit;color:inherit;background:#fff;border:1px solid var(--line);border-radius:5px;padding:8px 10px;width:100%}
+input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+textarea{resize:vertical}
+label{display:block;font-size:13px;color:var(--mut);margin-bottom:3px}
+.grid{display:grid;grid-template-columns:2fr 1fr auto;gap:10px;align-items:end}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.rowf{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+.rowf>div{flex:1;min-width:130px}
+
+button{font:inherit;cursor:pointer;border-radius:5px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:8px 14px}
+button:hover{background:#f3f6fa}
+.btn-p{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn-p:hover{background:var(--accent-d)}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn-row button{flex:1;min-width:110px}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 4px}
+.chip{padding:4px 12px;border-radius:99px;font-size:14px}
+.chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+
+.stats{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;margin:8px 0;color:var(--mut)}
+.stats b{color:var(--ink)}
+.note{margin:6px 0;font-size:13px;color:var(--no)}
+.empty{color:var(--mut);text-align:center;padding:18px 0;margin:0}
+
+.stu{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.stu .info{flex:1;min-width:0}
+.stu .info b{display:block;font-weight:600;overflow-wrap:anywhere}
+.stu .info small{color:var(--mut);font-size:12px}
+.tag{display:inline-block;font-size:12px;background:var(--head);border-radius:4px;padding:0 7px;margin-inline-end:6px}
+.state{font-size:14px;font-weight:600;min-width:46px;text-align:center;color:var(--no)}
+.stu.on .state{color:var(--ok)}
+.chk{width:46px;height:46px;padding:0;border:2px solid var(--line);border-radius:8px;font-size:26px;line-height:1;color:transparent;background:#fff}
+.stu.on .chk{background:var(--ok);border-color:var(--ok);color:#fff}
+.del{border:none;background:none;color:var(--mut);padding:6px;font-size:16px}
+.del:hover{background:var(--no-bg)}
+
+.hday{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.hday:first-child{border-top:none}
+.hday .d{flex:1;min-width:150px}
+.hday .ok{color:var(--ok);font-weight:600;font-size:14px}
+.hday .no{color:var(--no);font-weight:600;font-size:14px}
+.hday button{padding:4px 12px;font-size:14px}
+.scroll{max-height:300px;overflow:auto}
+
+.hint{font-size:12px;color:var(--mut);margin:8px 0 0}
+
+/* المعاينة */
+#modal{display:none;position:fixed;inset:0;background:rgba(20,28,45,.55);z-index:50;padding:12px}
+#modal.open{display:flex;justify-content:center;align-items:center}
+.mbox{background:#fff;border-radius:8px;width:100%;max-width:1000px;max-height:100%;display:flex;flex-direction:column;overflow:hidden}
+.mbar{display:flex;gap:8px;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--head)}
+.mbar button{padding:6px 14px}
+.mbar .sp{flex:1}
+#mBody{overflow:auto;padding:14px}
+
+/* التقرير (معاينة + طباعة) */
+.rep h2.rt{text-align:center;margin:0 0 2px;font:700 22px/1.4 "Amiri","Traditional Arabic","Noto Naskh Arabic",serif}
+.rep .rs{text-align:center;color:#555;font-size:13px;margin:0 0 12px}
+.rep h3{margin:16px 0 6px;font-size:16px}
+.rep .tw{overflow-x:auto}
+.rep table{border-collapse:collapse;width:100%;font-size:13px}
+.rep th,.rep td{border:1px solid #9aa5b5;padding:4px 6px;text-align:center;white-space:nowrap}
+.rep th{background:var(--head);font-weight:600}
+.rep th small{display:block;font-weight:400;font-size:10px;color:#555}
+.rep td.nm,.rep th.nm{text-align:right;white-space:normal;min-width:130px}
+.rep td.p{color:var(--ok);font-weight:700}
+.rep td.a{color:var(--no);font-weight:700}
+.rep .lg{font-size:12px;color:#555;margin-top:6px}
+.rep{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+#printArea{display:none}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body>*:not(#printArea){display:none!important}
+  body{background:#fff}
+  #printArea{display:block}
+  .rep h3:not(:first-of-type){break-before:page}
+  .rep tr{break-inside:avoid}
+  .rep .tw{overflow:visible}
+}
+
+@media (max-width:560px){
+  .grid{grid-template-columns:1fr}
+  .grid3{grid-template-columns:1fr}
+  h1{font-size:23px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>سجل حضور الطلاب</h1>
+    <div id="todayLabel"></div>
+  </header>
+
+  <!-- إضافة طالب -->
+  <section class="panel">
+    <h2>إضافة طالب</h2>
+    <div class="body">
+      <div class="grid">
+        <div>
+          <label for="newName">اسم الطالب (تكدر تكتب أكثر من اسم، كل اسم بسطر)</label>
+          <textarea id="newName" rows="2"></textarea>
+        </div>
+        <div>
+          <label for="newSection">الشعبة</label>
+          <input id="newSection" list="secList" placeholder="مثلاً: أ">
+          <datalist id="secList"></datalist>
+        </div>
+        <button class="btn-p" id="addBtn">إضافة</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- التحضير -->
+  <section class="panel">
+    <h2>التحضير</h2>
+    <div class="body">
+      <div class="rowf">
+        <div>
+          <label for="dayPick">التاريخ</label>
+          <input type="date" id="dayPick">
+        </div>
+        <button id="todayBtn" style="flex:none;min-width:0">اليوم</button>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="stats" id="stats"></div>
+      <div id="dayNote"></div>
+      <div id="list"></div>
+      <p class="hint">اضغط ✓ مقابل الاسم للحاضر. اللي ما تضغط عليه يندرج غايب بهذا اليوم.</p>
+    </div>
+  </section>
+
+  <!-- سجل الأيام -->
+  <section class="panel">
+    <h2>سجل أيام الحضور</h2>
+    <div class="body scroll" id="history"></div>
+  </section>
+
+  <!-- التقرير -->
+  <section class="panel">
+    <h2>التقرير</h2>
+    <div class="body">
+      <div class="grid3">
+        <div>
+          <label for="repSec">الشعبة</label>
+          <select id="repSec"></select>
+        </div>
+        <div>
+          <label for="repFrom">من تاريخ</label>
+          <input type="date" id="repFrom">
+        </div>
+        <div>
+          <label for="repTo">إلى تاريخ</label>
+          <input type="date" id="repTo">
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <label for="repTitle">عنوان الكشف (اختياري، يطلع أعلى الطباعة)</label>
+        <input id="repTitle" placeholder="كشف الحضور والغياب">
+      </div>
+      <div class="btn-row">
+        <button id="btnPrev">معاينة</button>
+        <button id="btnXls" class="btn-p">تصدير Excel</button>
+        <button id="btnPdf" class="btn-p">طباعة PDF</button>
+      </div>
+      <p class="hint">للـ PDF: من شاشة الطباعة اختار «حفظ بصيغة PDF» (Save as PDF).</p>
+    </div>
+  </section>
+
+  <!-- نسخة احتياطية -->
+  <section class="panel">
+    <h2>نسخة احتياطية</h2>
+    <div class="body">
+      <p class="hint" style="margin:0 0 8px">البيانات محفوظة داخل المتصفح. خذ نسخة احتياطية من وقت لوقت حتى ما تضيع.</p>
+      <div class="btn-row" style="margin-top:0">
+        <button id="btnBak">حفظ نسخة احتياطية</button>
+        <button id="btnImp">استرجاع نسخة</button>
+        <input type="file" id="impFile" accept=".json,application/json" style="display:none">
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- نافذة المعاينة -->
+<div id="modal">
+  <div class="mbox">
+    <div class="mbar">
+      <button id="mPdf" class="btn-p">طباعة PDF</button>
+      <button id="mXls" class="btn-p">Excel</button>
+      <span class="sp"></span>
+      <button id="mClose">إغلاق</button>
+    </div>
+    <div id="mBody"></div>
+  </div>
+</div>
+
+<div id="printArea"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const pad = n => String(n).padStart(2,'0');
+const todayStr = () => { const d = new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); };
+const fmt = d => d.split('-').reverse().join('/');
+const dayName = d => new Date(d+'T00:00:00').toLocaleDateString('ar-IQ',{weekday:'long'});
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+
+/* ---------- البيانات ---------- */
+const KEY = 'attendance_app_v1';
+let S = { students: [], present: {}, days: [], title: '' };
+try { const r = localStorage.getItem(KEY); if (r) S = Object.assign(S, JSON.parse(r)); } catch(e) {}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {} }
+
+// students: {id,name,section,added}   present: {'YYYY-MM-DD': {studentId:1}}   days: أيام فتحت بيها التطبيق
+function ensureDay(d){ if (!S.days.includes(d)) { S.days.push(d); S.days.sort(); } }
+
+let curDate = todayStr();
+let lastToday = curDate;
+let curSec = '';
+
+const sortedStudents = () => [...S.students].sort((a,b) =>
+  a.section.localeCompare(b.section,'ar') || a.name.localeCompare(b.name,'ar'));
+const sections = () => [...new Set(S.students.map(s => s.section))].sort((a,b) => a.localeCompare(b,'ar'));
+
+function counts(s){
+  let p = 0, t = 0;
+  S.days.forEach(d => { if (d >= s.added) { t++; if ((S.present[d]||{})[s.id]) p++; } });
+  return { p, t };
+}
+function dayCounts(d){
+  const st = S.students.filter(s => s.added <= d);
+  const pr = S.present[d] || {};
+  let p = 0; st.forEach(s => { if (pr[s.id]) p++; });
+  return { p, a: st.length - p };
+}
+
+/* ---------- الإجراءات ---------- */
+function addStudents(){
+  const names = $('newName').value.split('\n').map(x => x.trim()).filter(Boolean);
+  const sec = $('newSection').value.trim();
+  if (!names.length || !sec) { alert('اكتب اسم الطالب والشعبة'); return; }
+  names.forEach(n => S.students.push({ id: uid(), name: n, section: sec, added: todayStr() }));
+  $('newName').value = '';
+  save(); render();
+  $('newName').focus();
+}
+function toggle(id){
+  const s = S.students.find(x => x.id === id); if (!s) return;
+  ensureDay(curDate);
+  const pr = S.present[curDate] = S.present[curDate] || {};
+  if (pr[id]) delete pr[id];
+  else { pr[id] = 1; if (curDate < s.added) s.added = curDate; }
+  save(); render();
+}
+function delStudent(id){
+  const s = S.students.find(x => x.id === id); if (!s) return;
+  if (!confirm('حذف الطالب «'+s.name+'» وكل سجله؟')) return;
+  S.students = S.students.filter(x => x.id !== id);
+  Object.keys(S.present).forEach(d => { delete S.present[d][id]; });
+  save(); render();
+}
+function removeDay(d){
+  if (!confirm('حذف يوم '+fmt(d)+' من السجل؟')) return;
+  S.days = S.days.filter(x => x !== d);
+  delete S.present[d];
+  if (d === todayStr()) ensureDay(d); // اليوم الحالي يرجع يندرج لأن التطبيق مفتوح
+  save(); render();
+}
+
+/* ---------- العرض ---------- */
+function fillSelect(sel, opts, allLabel){
+  const v = sel.value;
+  sel.innerHTML = '<option value="">'+allLabel+'</option>' + opts.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
+  sel.value = opts.includes(v) ? v : '';
+}
+function render(){
+  const secs = sections();
+  if (curSec && !secs.includes(curSec)) curSec = '';
+
+  $('todayLabel').textContent = new Date().toLocaleDateString('ar-IQ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  $('secList').innerHTML = secs.map(s => `<option value="${esc(s)}">`).join('');
+  fillSelect($('repSec'), secs, 'كل الشعب');
+
+  $('chips').innerHTML = ['',...secs].map(s =>
+    `<button class="chip ${s===curSec?'on':''}" data-sec="${esc(s)}">${s?esc(s):'الكل'}</button>`).join('');
+
+  const studs = sortedStudents().filter(s => !curSec || s.section === curSec);
+  const pr = S.present[curDate] || {};
+  let p = 0; studs.forEach(s => { if (pr[s.id]) p++; });
+  $('stats').innerHTML = `<span>المجموع: <b>${studs.length}</b></span><span>حاضر: <b style="color:var(--ok)">${p}</b></span><span>غايب: <b style="color:var(--no)">${studs.length-p}</b></span>`;
+  $('dayNote').innerHTML = S.days.includes(curDate) ? '' : '<p class="note">هذا اليوم مو مسجل بالسجل. أول ما تضغط ✓ يندرج.</p>';
+
+  if (!S.students.length) $('list').innerHTML = '<p class="empty">ما اكو طلاب لحد الآن. ضيف أول طالب من فوق.</p>';
+  else if (!studs.length) $('list').innerHTML = '<p class="empty">ما اكو طلاب بهذي الشعبة.</p>';
+  else $('list').innerHTML = studs.map(s => {
+    const on = !!pr[s.id], c = counts(s);
+    return `<div class="stu ${on?'on':''}">
+      <div class="info"><b>${esc(s.name)}</b><span class="tag">${esc(s.section)}</span><small>حضر ${c.p} من ${c.t} يوم</small></div>
+      <div class="state">${on?'حاضر':'غايب'}</div>
+      <button class="chk" data-id="${s.id}" aria-label="تسجيل حضور ${esc(s.name)}">✓</button>
+      <button class="del" data-del="${s.id}" aria-label="حذف ${esc(s.name)}">🗑</button>
+    </div>`;
+  }).join('');
+
+  const days = [...S.days].sort().reverse();
+  $('history').innerHTML = days.length ? days.map(d => {
+    const c = dayCounts(d);
+    return `<div class="hday">
+      <div class="d"><b>${dayName(d)}</b> ${fmt(d)}</div>
+      <span class="ok">حاضر ${c.p}</span><span class="no">غايب ${c.a}</span>
+      <button data-open="${d}">فتح</button><button data-rm="${d}">حذف</button>
+    </div>`;
+  }).join('') : '<p class="empty">ما اكو أيام مسجلة.</p>';
+}
+
+/* ---------- التقرير ---------- */
+function getReport(){
+  const sec = $('repSec').value, from = $('repFrom').value, to = $('repTo').value;
+  const days = S.days.filter(d => (!from || d >= from) && (!to || d <= to)).sort();
+  const all = sortedStudents();
+  const groups = (sec ? [sec] : sections()).map(sc => ({
+    name: sc,
+    rows: all.filter(s => s.section === sc).map(s => {
+      let p = 0, a = 0;
+      const cells = days.map(d => {
+        if (d < s.added) return null;
+        if ((S.present[d]||{})[s.id]) { p++; return 1; }
+        a++; return 0;
+      });
+      return { name: s.name, cells, p, a };
+    })
+  })).filter(g => g.rows.length);
+  return { days, groups };
+}
+function reportHTML(){
+  const r = getReport();
+  if (!r.days.length || !r.groups.length) return '<p class="empty">ما اكو بيانات للتقرير.</p>';
+  const title = ($('repTitle').value.trim()) || 'كشف الحضور والغياب';
+  let h = `<div class="rep"><h2 class="rt">${esc(title)}</h2>
+    <p class="rs">من ${fmt(r.days[0])} إلى ${fmt(r.days[r.days.length-1])} — عدد الأيام: ${r.days.length}</p>`;
+  r.groups.forEach(g => {
+    h += `<h3>الشعبة: ${esc(g.name)}</h3><div class="tw"><table><thead><tr><th>#</th><th class="nm">الاسم</th>` +
+      r.days.map(d => { const x = d.split('-'); return `<th>${x[2]}/${x[1]}<small>${x[0]}</small></th>`; }).join('') +
+      `<th>حاضر</th><th>غائب</th></tr></thead><tbody>`;
+    g.rows.forEach((x,i) => {
+      h += `<tr><td>${i+1}</td><td class="nm">${esc(x.name)}</td>` +
+        x.cells.map(c => c===1 ? '<td class="p">✓</td>' : c===0 ? '<td class="a">✗</td>' : '<td>-</td>').join('') +
+        `<td>${x.p}</td><td>${x.a}</td></tr>`;
+    });
+    h += `</tbody></table></div>`;
+  });
+  return h + `<p class="lg">✓ حاضر &nbsp; ✗ غائب &nbsp; - قبل تسجيل الطالب</p></div>`;
+}
+function openPreview(){ $('mBody').innerHTML = reportHTML(); $('modal').classList.add('open'); }
+function closePreview(){ $('modal').classList.remove('open'); }
+function printPdf(){
+  const html = reportHTML();
+  if (html.indexOf('class="empty"') > -1) { alert('ما اكو بيانات للطباعة'); return; }
+  $('printArea').innerHTML = html;
+  window.print();
+}
+
+/* ---------- Excel (xlsx حقيقي بدون مكتبات) ---------- */
+const crcTable = (() => { const t = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(b){ let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = crcTable[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(files){
+  const enc = new TextEncoder(), parts = [], cd = []; let off = 0;
+  files.forEach(f => {
+    const nm = enc.encode(f.name), data = enc.encode(f.text), crc = crc32(data), len = data.length;
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true); h.setUint16(4,20,true); h.setUint16(6,0x0800,true); h.setUint16(8,0,true);
+    h.setUint16(10,0,true); h.setUint16(12,0x21,true); h.setUint32(14,crc,true); h.setUint32(18,len,true);
+    h.setUint32(22,len,true); h.setUint16(26,nm.length,true); h.setUint16(28,0,true);
+    parts.push(new Uint8Array(h.buffer), nm, data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true); c.setUint16(4,20,true); c.setUint16(6,20,true); c.setUint16(8,0x0800,true);
+    c.setUint16(10,0,true); c.setUint16(12,0,true); c.setUint16(14,0x21,true); c.setUint32(16,crc,true);
+    c.setUint32(20,len,true); c.setUint32(24,len,true); c.setUint16(28,nm.length,true); c.setUint16(30,0,true);
+    c.setUint16(32,0,true); c.setUint16(34,0,true); c.setUint16(36,0,true); c.setUint32(38,0,true); c.setUint32(42,off,true);
+    cd.push(new Uint8Array(c.buffer), nm);
+    off += 30 + nm.length + len;
+  });
+  let cdSize = 0; cd.forEach(x => cdSize += x.length);
+  const e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true); e.setUint16(8,files.length,true); e.setUint16(10,files.length,true);
+  e.setUint32(12,cdSize,true); e.setUint32(16,off,true);
+  return new Blob([...parts, ...cd, new Uint8Array(e.buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+function colName(n){ let s = ''; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+function sheetXml(rows){
+  const nc = Math.max(3, (rows[3] || []).length);
+  let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<sheetViews><sheetView rightToLeft="1" workbookViewId="0"/></sheetViews>' +
+    `<cols><col min="1" max="1" width="6" customWidth="1"/><col min="2" max="2" width="28" customWidth="1"/><col min="3" max="${nc}" width="12" customWidth="1"/></cols><sheetData>`;
+  rows.forEach((row, ri) => {
+    x += `<row r="${ri+1}">`;
+    row.forEach((v, ci) => {
+      const ref = colName(ci) + (ri + 1);
+      x += typeof v === 'number' ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t>${esc(v)}</t></is></c>`;
+    });
+    x += '</row>';
+  });
+  return x + '</sheetData></worksheet>';
+}
+function makeXlsx(sheets){
+  const H = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const files = [
+    { name: '[Content_Types].xml', text: H + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      sheets.map((s,i) => `<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') + '</Types>' },
+    { name: '_rels/.rels', text: H + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+    { name: 'xl/workbook.xml', text: H + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' +
+      sheets.map((s,i) => `<sheet name="${esc(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('') + '</sheets></workbook>' },
+    { name: 'xl/_rels/workbook.xml.rels', text: H + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      sheets.map((s,i) => `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('') + '</Relationships>' }
+  ];
+  sheets.forEach((s,i) => files.push({ name: `xl/worksheets/sheet${i+1}.xml`, text: sheetXml(s.rows) }));
+  return zipStore(files);
+}
+function download(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function exportExcel(){
+  const r = getReport();
+  if (!r.days.length || !r.groups.length) { alert('ما اكو بيانات للتصدير'); return; }
+  const title = ($('repTitle').value.trim()) || 'كشف الحضور والغياب';
+  const used = {};
+  const sheets = r.groups.map(g => {
+    let nm = g.name.replace(/[\\\/\?\*\[\]:]/g,'').trim().slice(0,31) || 'شعبة';
+    const base = nm; let i = 2;
+    while (used[nm]) nm = base.slice(0,28) + ' ' + (i++);
+    used[nm] = 1;
+    const rows = [[title], ['الشعبة: ' + g.name], [], ['#','الاسم', ...r.days.map(fmt), 'حاضر','غائب']];
+    g.rows.forEach((x,i) => rows.push([i+1, x.name, ...x.cells.map(c => c===1 ? 'حاضر' : c===0 ? 'غائب' : '-'), x.p, x.a]));
+    return { name: nm, rows };
+  });
+  download(makeXlsx(sheets), 'attendance_' + todayStr() + '.xlsx');
+}
+
+/* ---------- نسخة احتياطية ---------- */
+function backup(){
+  download(new Blob([JSON.stringify(S)], { type: 'application/json' }), 'attendance_backup_' + todayStr() + '.json');
+}
+function restore(file){
+  const fr = new FileReader();
+  fr.onload = () => {
+    try {
+      const d = JSON.parse(fr.result);
+      if (!Array.isArray(d.students) || !Array.isArray(d.days) || typeof d.present !== 'object') throw new Error();
+      if (!confirm('البيانات الحالية راح تنستبدل بالنسخة الاحتياطية. تكمل؟')) return;
+      S = { students: d.students, present: d.present, days: d.days, title: d.title || '' };
+      ensureDay(todayStr()); save();
+      $('repTitle').value = S.title; render();
+    } catch (e) { alert('الملف مو صالح'); }
+  };
+  fr.readAsText(file);
+}
+
+/* ---------- الأحداث ---------- */
+$('addBtn').addEventListener('click', addStudents);
+$('newSection').addEventListener('keydown', e => { if (e.key === 'Enter') addStudents(); });
+$('dayPick').addEventListener('change', e => { curDate = e.target.value || todayStr(); e.target.value = curDate; render(); });
+$('todayBtn').addEventListener('click', () => { curDate = todayStr(); $('dayPick').value = curDate; render(); });
+$('chips').addEventListener('click', e => { const b = e.target.closest('[data-sec]'); if (b) { curSec = b.dataset.sec; render(); } });
+$('list').addEventListener('click', e => {
+  const c = e.target.closest('[data-id]'); if (c) { toggle(c.dataset.id); return; }
+  const d = e.target.closest('[data-del]'); if (d) delStudent(d.dataset.del);
+});
+$('history').addEventListener('click', e => {
+  const o = e.target.closest('[data-open]');
+  if (o) { curDate = o.dataset.open; $('dayPick').value = curDate; render(); $('dayPick').scrollIntoView({behavior:'smooth',block:'center'}); return; }
+  const r = e.target.closest('[data-rm]'); if (r) removeDay(r.dataset.rm);
+});
+$('repTitle').addEventListener('input', e => { S.title = e.target.value; save(); });
+$('btnPrev').addEventListener('click', openPreview);
+$('btnXls').addEventListener('click', exportExcel);
+$('btnPdf').addEventListener('click', printPdf);
+$('mXls').addEventListener('click', exportExcel);
+$('mPdf').addEventListener('click', printPdf);
+$('mClose').addEventListener('click', closePreview);
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal') closePreview(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePreview(); });
+$('btnBak').addEventListener('click', backup);
+$('btnImp').addEventListener('click', () => $('impFile').click());
+$('impFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) restore(f); e.target.value = ''; });
+
+// إذا بقى التطبيق مفتوح لليوم الثاني
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  const t = todayStr();
+  if (t !== lastToday) {
+    if (curDate === lastToday) curDate = t;
+    lastToday = t; ensureDay(t); save();
+    $('dayPick').value = curDate; render();
+  }
+});
+
+/* ---------- تشغيل ---------- */
+ensureDay(todayStr());   // فتح التطبيق = يوم مسجل، واللي ما ينضغط عليه يندرج غايب
+save();
+$('dayPick').value = curDate;
+$('repTitle').value = S.title || '';
+render();
+</script>
+</body>
+</html>
