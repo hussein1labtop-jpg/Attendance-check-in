@@ -3,9 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1d5f8a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="سجل الحضور">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231d5f8a'/%3E%3Cpath d='M27 52l16 16 30-34' fill='none' stroke='white' stroke-width='11' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231d5f8a'/%3E%3Cpath d='M27 52l16 16 30-34' fill='none' stroke='white' stroke-width='11' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <title>تسجيل حضور الطلاب</title>
 <style>
 :root{
+
   --paper:#f2f5f8;--panel:#fff;--ink:#1c2740;--mut:#63708a;--line:#d3dbe6;
   --accent:#1d5f8a;--accent-d:#164a6c;
   --ok:#1b7a4b;--ok-bg:#e6f4ec;--no:#b8322a;--no-bg:#fbeceb;--head:#e8eef5;
@@ -56,6 +64,11 @@ button:hover{background:#f3f6fa}
 .stu.on .state{color:var(--ok)}
 .chk{width:46px;height:46px;padding:0;border:2px solid var(--line);border-radius:8px;font-size:26px;line-height:1;color:transparent;background:#fff}
 .stu.on .chk{background:var(--ok);border-color:var(--ok);color:#fff}
+.chk:disabled{opacity:.55;cursor:not-allowed}
+.stu.locked{opacity:.85}
+.lockmsg{color:var(--accent-d);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lockmsg button{padding:3px 12px;font-size:13px}
+.lockbadge{font-size:12px;color:var(--accent-d);font-weight:600;margin-inline-start:6px}
 .del{border:none;background:none;color:var(--mut);padding:6px;font-size:16px}
 .del:hover{background:var(--no-bg)}
 
@@ -121,6 +134,9 @@ button:hover{background:#f3f6fa}
 .subj-btn span{color:var(--mut);font-size:13px}
 .subj-btn .cnt{flex:none;background:var(--head);border-radius:99px;padding:2px 10px;font-size:12px;color:var(--ink)}
 #switchSubj{background:none;border:1px solid var(--line);color:var(--ink)}
+.conn{font-size:20px;color:var(--no);line-height:1}
+.conn.on{color:var(--ok)}
+.pend{display:inline-block;font-size:11px;background:#fff3cd;color:#8a6414;border-radius:4px;padding:1px 8px;margin-inline-start:6px}
 </style>
 </head>
 <body>
@@ -128,7 +144,7 @@ button:hover{background:#f3f6fa}
 <div id="picker">
   <h1>سجل حضور الطلاب</h1>
   <p class="sub">اختر المادة</p>
-  <div class="subj-list" id="subjList"></div>
+  <div class="subj-list" id="subjList"><p class="empty">جاري الاتصال بالخادم…</p></div>
 </div>
 
 <div class="wrap" id="app" style="display:none">
@@ -138,7 +154,10 @@ button:hover{background:#f3f6fa}
       <h1 id="subjTitle">سجل حضور الطلاب</h1>
       <div id="todayLabel"></div>
     </div>
-    <button id="switchSubj">تبديل المادة</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="connBadge" class="conn">●</span>
+      <button id="switchSubj">تبديل المادة</button>
+    </div>
   </header>
 
   <!-- إضافة طالب -->
@@ -245,6 +264,24 @@ button:hover{background:#f3f6fa}
 
 <div id="printArea"></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyA4SLvIefeNqLd9Pjjn4Je4nXMN99XXwoY",
+  authDomain: "student-attendance-2a1dd.firebaseapp.com",
+  databaseURL: "https://student-attendance-2a1dd-default-rtdb.firebaseio.com",
+  projectId: "student-attendance-2a1dd",
+  storageBucket: "student-attendance-2a1dd.firebasestorage.app",
+  messagingSenderId: "356810587783",
+  appId: "1:356810587783:web:f42cc5f3ca54f9cd89c222"
+};
+firebase.initializeApp(firebaseConfig);
+const fbAuth = firebase.auth();
+const fbdb = firebase.database();
+</script>
+
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -269,39 +306,71 @@ const SUBJECTS = [
 ];
 const subjLabel = sub => sub.label + ' — ' + sub.teacher;
 
+/* ---------- الاتصال ---------- */
+let authReady = false;
+fbAuth.signInAnonymously().catch(err => {
+  $('subjList').innerHTML = '<p class="empty">تعذر الاتصال بالخادم. تأكد من الانترنت وأعد فتح الصفحة.<br><small>'+esc(err.message)+'</small></p>';
+});
+firebase.auth().onAuthStateChanged(user => {
+  authReady = !!user;
+  if (user) renderPicker();
+});
+firebase.database().ref('.info/connected').on('value', snap => {
+  const on = snap.val() === true;
+  const b = $('connBadge');
+  if (b) { b.classList.toggle('on', on); b.title = on ? 'متصل' : 'غير متصل — التغييرات تنحفظ وترسل أول ما يرجع النت'; }
+});
+
 /* ---------- البيانات ---------- */
-const KEY_PREFIX = 'attendance_app_v2::';
 let curSubjectId = null;
-let S = { students: [], present: {}, days: [], title: '' };
-function loadSubject(id){
-  S = { students: [], present: {}, days: [], title: '' };
-  try { const r = localStorage.getItem(KEY_PREFIX + id); if (r) S = Object.assign(S, JSON.parse(r)); } catch(e) {}
-  curSubjectId = id;
+let subjectRef = null;
+let subjectListener = null;
+let S = { students: [], present: {}, days: [], locked: {}, title: '' };
+
+function snapToS(v){
+  v = v || {};
+  const students = Object.keys(v.students || {}).map(id => ({ id, ...v.students[id] }));
+  const days = Object.keys(v.attendance || {}).sort();
+  const present = {}, locked = {};
+  days.forEach(d => {
+    present[d] = (v.attendance[d] && v.attendance[d].present) || {};
+    if (v.attendance[d] && v.attendance[d].locked) locked[d] = true;
+  });
+  return { students, present, days, locked, title: v.title || '' };
 }
-function save(){ if (!curSubjectId) return; try { localStorage.setItem(KEY_PREFIX + curSubjectId, JSON.stringify(S)); } catch(e) {} }
-function countStudents(id){
-  try { const r = localStorage.getItem(KEY_PREFIX + id); if (r) return (JSON.parse(r).students || []).length; } catch(e) {}
-  return 0;
+
+function countStudents(id, cb){
+  fbdb.ref('subjects/' + id + '/students').once('value')
+    .then(s => cb(Object.keys(s.val() || {}).length))
+    .catch(() => cb('؟'));
 }
 function renderPicker(){
+  if (!authReady) { $('subjList').innerHTML = '<p class="empty">جاري الاتصال بالخادم…</p>'; return; }
   $('subjList').innerHTML = SUBJECTS.map(sub =>
-    `<button class="subj-btn" data-subj="${sub.id}"><span><b>${esc(subjLabel(sub))}</b></span><span class="cnt">${countStudents(sub.id)} طالب</span></button>`
+    `<button class="subj-btn" data-subj="${sub.id}"><span><b>${esc(subjLabel(sub))}</b></span><span class="cnt" id="cnt-${sub.id}">…</span></button>`
   ).join('');
+  SUBJECTS.forEach(sub => countStudents(sub.id, n => { const el = $('cnt-'+sub.id); if (el) el.textContent = n + ' طالب'; }));
 }
 function openSubject(id){
-  loadSubject(id);
-  ensureDay(todayStr());
-  save();
+  if (subjectListener) subjectRef.off('value', subjectListener);
+  curSubjectId = id;
+  subjectRef = fbdb.ref('subjects/' + id);
   const sub = SUBJECTS.find(s => s.id === id);
   $('subjTitle').textContent = sub ? subjLabel(sub) : 'سجل حضور الطلاب';
   curDate = todayStr(); lastToday = curDate; curSec = '';
   $('dayPick').value = curDate;
-  $('repTitle').value = S.title || '';
   $('picker').style.display = 'none';
   $('app').style.display = '';
-  render();
+  let first = true;
+  subjectListener = subjectRef.on('value', snap => {
+    S = snapToS(snap.val());
+    if (first) { first = false; $('repTitle').value = S.title || ''; ensureDay(todayStr()); }
+    render();
+  }, err => { alert('تعذر تحميل بيانات المادة: ' + err.message); });
 }
 function backToPicker(){
+  if (subjectListener) { subjectRef.off('value', subjectListener); subjectListener = null; }
+  curSubjectId = null;
   $('app').style.display = 'none';
   $('picker').style.display = '';
   renderPicker();
@@ -312,7 +381,7 @@ $('subjList').addEventListener('click', e => {
 $('switchSubj').addEventListener('click', backToPicker);
 
 // students: {id,name,section,added}   present: {'YYYY-MM-DD': {studentId:1}}   days: أيام فتحت بيها التطبيق
-function ensureDay(d){ if (!S.days.includes(d)) { S.days.push(d); S.days.sort(); } }
+function ensureDay(d){ if (!S.days.includes(d)) subjectRef.child('attendance/' + d + '/opened').set(true); }
 
 let curDate = todayStr();
 let lastToday = curDate;
@@ -339,32 +408,38 @@ function addStudents(){
   const names = $('newName').value.split('\n').map(x => x.trim()).filter(Boolean);
   const sec = $('newSection').value.trim();
   if (!names.length || !sec) { alert('اكتب اسم الطالب والشعبة'); return; }
-  names.forEach(n => S.students.push({ id: uid(), name: n, section: sec, added: todayStr() }));
+  const updates = {};
+  names.forEach(n => { updates['students/' + uid()] = { name: n, section: sec, added: todayStr() }; });
+  subjectRef.update(updates);
   $('newName').value = '';
-  save(); render();
   $('newName').focus();
 }
+function isLocked(d){ return !!(S.locked && S.locked[d]); }
+function lockDay(d){ subjectRef.child('attendance/' + d + '/locked').set(true); }
+function unlockDay(d){ subjectRef.child('attendance/' + d + '/locked').remove(); }
 function toggle(id){
+  if (isLocked(curDate)) { alert('هذا اليوم محفوظ. اضغط "تعديل" حتى تكدر تغيّره.'); return; }
   const s = S.students.find(x => x.id === id); if (!s) return;
   ensureDay(curDate);
-  const pr = S.present[curDate] = S.present[curDate] || {};
-  if (pr[id]) delete pr[id];
-  else { pr[id] = 1; if (curDate < s.added) s.added = curDate; }
-  save(); render();
+  const pr = S.present[curDate] || {};
+  if (pr[id]) subjectRef.child('attendance/' + curDate + '/present/' + id).remove();
+  else {
+    subjectRef.child('attendance/' + curDate + '/present/' + id).set(true);
+    if (curDate < s.added) subjectRef.child('students/' + id + '/added').set(curDate);
+  }
 }
 function delStudent(id){
   const s = S.students.find(x => x.id === id); if (!s) return;
   if (!confirm('حذف الطالب «'+s.name+'» وكل سجله؟')) return;
-  S.students = S.students.filter(x => x.id !== id);
-  Object.keys(S.present).forEach(d => { delete S.present[d][id]; });
-  save(); render();
+  const updates = { ['students/' + id]: null };
+  S.days.forEach(d => { updates['attendance/' + d + '/present/' + id] = null; });
+  subjectRef.update(updates);
 }
 function removeDay(d){
   if (!confirm('حذف يوم '+fmt(d)+' من السجل؟')) return;
-  S.days = S.days.filter(x => x !== d);
-  delete S.present[d];
-  if (d === todayStr()) ensureDay(d); // اليوم الحالي يرجع يندرج لأن التطبيق مفتوح
-  save(); render();
+  subjectRef.child('attendance/' + d).remove().then(() => {
+    if (d === todayStr()) ensureDay(d); // اليوم الحالي يرجع يندرج لأن التطبيق مفتوح
+  });
 }
 
 /* ---------- العرض ---------- */
@@ -388,16 +463,21 @@ function render(){
   const pr = S.present[curDate] || {};
   let p = 0; studs.forEach(s => { if (pr[s.id]) p++; });
   $('stats').innerHTML = `<span>المجموع: <b>${studs.length}</b></span><span>حاضر: <b style="color:var(--ok)">${p}</b></span><span>غايب: <b style="color:var(--no)">${studs.length-p}</b></span>`;
-  $('dayNote').innerHTML = S.days.includes(curDate) ? '' : '<p class="note">هذا اليوم مو مسجل بالسجل. أول ما تضغط ✓ يندرج.</p>';
+  const locked = isLocked(curDate);
+  if (locked) {
+    $('dayNote').innerHTML = '<p class="note lockmsg">🔒 هذا اليوم محفوظ ومقفل. <button data-editcur="1">تعديل</button></p>';
+  } else {
+    $('dayNote').innerHTML = S.days.includes(curDate) ? '' : '<p class="note">هذا اليوم مو مسجل بالسجل. أول ما تضغط ✓ يندرج.</p>';
+  }
 
   if (!S.students.length) $('list').innerHTML = '<p class="empty">ما اكو طلاب لحد الآن. ضيف أول طالب من فوق.</p>';
   else if (!studs.length) $('list').innerHTML = '<p class="empty">ما اكو طلاب بهذي الشعبة.</p>';
   else $('list').innerHTML = studs.map(s => {
     const on = !!pr[s.id], c = counts(s);
-    return `<div class="stu ${on?'on':''}">
+    return `<div class="stu ${on?'on':''}${locked?' locked':''}">
       <div class="info"><b>${esc(s.name)}</b><span class="tag">${esc(s.section)}</span><small>حضر ${c.p} من ${c.t} يوم</small></div>
       <div class="state">${on?'حاضر':'غايب'}</div>
-      <button class="chk" data-id="${s.id}" aria-label="تسجيل حضور ${esc(s.name)}">✓</button>
+      <button class="chk" data-id="${s.id}" aria-label="تسجيل حضور ${esc(s.name)}"${locked?' disabled':''}>✓</button>
       <button class="del" data-del="${s.id}" aria-label="حذف ${esc(s.name)}">🗑</button>
     </div>`;
   }).join('');
@@ -405,10 +485,13 @@ function render(){
   const days = [...S.days].sort().reverse();
   $('history').innerHTML = days.length ? days.map(d => {
     const c = dayCounts(d);
+    const dLocked = isLocked(d);
     return `<div class="hday">
-      <div class="d"><b>${dayName(d)}</b> ${fmt(d)}</div>
+      <div class="d"><b>${dayName(d)}</b> ${fmt(d)} ${dLocked?'<span class="lockbadge">🔒 محفوظ</span>':''}</div>
       <span class="ok">حاضر ${c.p}</span><span class="no">غايب ${c.a}</span>
-      <button data-open="${d}">فتح</button><button data-rm="${d}">حذف</button>
+      <button data-open="${d}">فتح</button>
+      ${dLocked ? `<button data-edit="${d}">تعديل</button>` : `<button data-lock="${d}" class="btn-p">حفظ</button>`}
+      <button data-rm="${d}">حذف</button>
     </div>`;
   }).join('') : '<p class="empty">ما اكو أيام مسجلة.</p>';
 }
@@ -549,10 +632,14 @@ function restore(file){
     try {
       const d = JSON.parse(fr.result);
       if (!Array.isArray(d.students) || !Array.isArray(d.days) || typeof d.present !== 'object') throw new Error();
-      if (!confirm('البيانات الحالية راح تنستبدل بالنسخة الاحتياطية. تكمل؟')) return;
-      S = { students: d.students, present: d.present, days: d.days, title: d.title || '' };
-      ensureDay(todayStr()); save();
-      $('repTitle').value = S.title; render();
+      if (!confirm('راح تستبدل بيانات هذه المادة عند الجميع (كل من يفتح نفس المادة) بالنسخة الاحتياطية. تكمل؟')) return;
+      const raw = { title: d.title || '', students: {}, attendance: {} };
+      d.students.forEach(s => { raw.students[s.id] = { name: s.name, section: s.section, added: s.added }; });
+      d.days.forEach(day => {
+        raw.attendance[day] = { opened: true, present: d.present[day] || {} };
+        if (d.locked && d.locked[day]) raw.attendance[day].locked = true;
+      });
+      subjectRef.set(raw);
     } catch (e) { alert('الملف مو صالح'); }
   };
   fr.readAsText(file);
@@ -571,9 +658,19 @@ $('list').addEventListener('click', e => {
 $('history').addEventListener('click', e => {
   const o = e.target.closest('[data-open]');
   if (o) { curDate = o.dataset.open; $('dayPick').value = curDate; render(); $('dayPick').scrollIntoView({behavior:'smooth',block:'center'}); return; }
+  const lk = e.target.closest('[data-lock]'); if (lk) { lockDay(lk.dataset.lock); return; }
+  const ed = e.target.closest('[data-edit]'); if (ed) { unlockDay(ed.dataset.edit); return; }
   const r = e.target.closest('[data-rm]'); if (r) removeDay(r.dataset.rm);
 });
-$('repTitle').addEventListener('input', e => { S.title = e.target.value; save(); });
+$('dayNote').addEventListener('click', e => {
+  if (e.target.closest('[data-editcur]')) unlockDay(curDate);
+});
+let titleTimer;
+$('repTitle').addEventListener('input', e => {
+  const v = e.target.value;
+  clearTimeout(titleTimer);
+  titleTimer = setTimeout(() => { if (subjectRef) subjectRef.child('title').set(v); }, 500);
+});
 $('btnPrev').addEventListener('click', openPreview);
 $('btnXls').addEventListener('click', exportExcel);
 $('btnPdf').addEventListener('click', printPdf);
@@ -592,7 +689,8 @@ document.addEventListener('visibilitychange', () => {
   const t = todayStr();
   if (t !== lastToday) {
     if (curDate === lastToday) curDate = t;
-    lastToday = t; ensureDay(t); save();
+    lastToday = t;
+    if (subjectRef) ensureDay(t);
     $('dayPick').value = curDate; render();
   }
 });
