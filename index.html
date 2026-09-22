@@ -109,14 +109,36 @@ button:hover{background:#f3f6fa}
   .grid3{grid-template-columns:1fr}
   h1{font-size:23px}
 }
+
+/* اختيار المادة */
+#picker{max-width:640px;margin:0 auto;padding:24px 14px 60px}
+#picker h1{text-align:center;margin-bottom:4px}
+#picker p.sub{text-align:center;color:var(--mut);margin:0 0 22px}
+.subj-list{display:flex;flex-direction:column;gap:10px}
+.subj-btn{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:right;padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.subj-btn:hover{background:#f3f6fa;border-color:var(--accent)}
+.subj-btn b{font-size:16px}
+.subj-btn span{color:var(--mut);font-size:13px}
+.subj-btn .cnt{flex:none;background:var(--head);border-radius:99px;padding:2px 10px;font-size:12px;color:var(--ink)}
+#switchSubj{background:none;border:1px solid var(--line);color:var(--ink)}
 </style>
 </head>
 <body>
-<div class="wrap">
+
+<div id="picker">
+  <h1>سجل حضور الطلاب</h1>
+  <p class="sub">اختر المادة</p>
+  <div class="subj-list" id="subjList"></div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
 
   <header class="top">
-    <h1>سجل حضور الطلاب</h1>
-    <div id="todayLabel"></div>
+    <div>
+      <h1 id="subjTitle">سجل حضور الطلاب</h1>
+      <div id="todayLabel"></div>
+    </div>
+    <button id="switchSubj">تبديل المادة</button>
   </header>
 
   <!-- إضافة طالب -->
@@ -232,11 +254,62 @@ const fmt = d => d.split('-').reverse().join('/');
 const dayName = d => new Date(d+'T00:00:00').toLocaleDateString('ar-IQ',{weekday:'long'});
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
+/* ---------- المواد ---------- */
+const SUBJECTS = [
+  { id: 'math-haidar',   label: 'رياضيات', teacher: 'الاستاذ حيدر الحسناوي' },
+  { id: 'math-maha',     label: 'رياضيات', teacher: 'الاستاذة مها الطائي' },
+  { id: 'chem-hussein',  label: 'كيمياء',  teacher: 'الاستاذ حسين النجار' },
+  { id: 'phys-aws',      label: 'فيزياء',  teacher: 'الاستاذ اوس الجيلاوي' },
+  { id: 'eng-taha',      label: 'انكليزي', teacher: 'الاستاذ طه حسين' },
+  { id: 'eng-nabeel',    label: 'انكليزي', teacher: 'الاستاذ نبيل السيلاوي' },
+  { id: 'eng-ihab',      label: 'انكليزي', teacher: 'الاستاذ ايهاب العبيدي' },
+  { id: 'arabic-abed',   label: 'عربي',    teacher: 'الاستاذ عبد الامير الموسوي' },
+  { id: 'bio-hussam',    label: 'احياء',   teacher: 'الاستاذ حسام وساف' },
+  { id: 'bio-tayba',     label: 'احياء',   teacher: 'الاستاذة طيبه' }
+];
+const subjLabel = sub => sub.label + ' — ' + sub.teacher;
+
 /* ---------- البيانات ---------- */
-const KEY = 'attendance_app_v1';
+const KEY_PREFIX = 'attendance_app_v2::';
+let curSubjectId = null;
 let S = { students: [], present: {}, days: [], title: '' };
-try { const r = localStorage.getItem(KEY); if (r) S = Object.assign(S, JSON.parse(r)); } catch(e) {}
-function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {} }
+function loadSubject(id){
+  S = { students: [], present: {}, days: [], title: '' };
+  try { const r = localStorage.getItem(KEY_PREFIX + id); if (r) S = Object.assign(S, JSON.parse(r)); } catch(e) {}
+  curSubjectId = id;
+}
+function save(){ if (!curSubjectId) return; try { localStorage.setItem(KEY_PREFIX + curSubjectId, JSON.stringify(S)); } catch(e) {} }
+function countStudents(id){
+  try { const r = localStorage.getItem(KEY_PREFIX + id); if (r) return (JSON.parse(r).students || []).length; } catch(e) {}
+  return 0;
+}
+function renderPicker(){
+  $('subjList').innerHTML = SUBJECTS.map(sub =>
+    `<button class="subj-btn" data-subj="${sub.id}"><span><b>${esc(subjLabel(sub))}</b></span><span class="cnt">${countStudents(sub.id)} طالب</span></button>`
+  ).join('');
+}
+function openSubject(id){
+  loadSubject(id);
+  ensureDay(todayStr());
+  save();
+  const sub = SUBJECTS.find(s => s.id === id);
+  $('subjTitle').textContent = sub ? subjLabel(sub) : 'سجل حضور الطلاب';
+  curDate = todayStr(); lastToday = curDate; curSec = '';
+  $('dayPick').value = curDate;
+  $('repTitle').value = S.title || '';
+  $('picker').style.display = 'none';
+  $('app').style.display = '';
+  render();
+}
+function backToPicker(){
+  $('app').style.display = 'none';
+  $('picker').style.display = '';
+  renderPicker();
+}
+$('subjList').addEventListener('click', e => {
+  const b = e.target.closest('[data-subj]'); if (b) openSubject(b.dataset.subj);
+});
+$('switchSubj').addEventListener('click', backToPicker);
 
 // students: {id,name,section,added}   present: {'YYYY-MM-DD': {studentId:1}}   days: أيام فتحت بيها التطبيق
 function ensureDay(d){ if (!S.days.includes(d)) { S.days.push(d); S.days.sort(); } }
@@ -525,11 +598,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ---------- تشغيل ---------- */
-ensureDay(todayStr());   // فتح التطبيق = يوم مسجل، واللي ما ينضغط عليه يندرج غايب
-save();
-$('dayPick').value = curDate;
-$('repTitle').value = S.title || '';
-render();
+renderPicker();   // يبدأ التطبيق باختيار المادة
 </script>
 </body>
 </html>
