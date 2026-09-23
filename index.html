@@ -393,6 +393,12 @@ $('switchSubj').addEventListener('click', backToPicker);
 
 // students: {id,name,section,added}   present: {'YYYY-MM-DD': {studentId:1}}   days: أيام فتحت بيها التطبيق
 function ensureDay(d){ if (!S.days.includes(d)) subjectRef.child('attendance/' + d + '/opened').set(true); }
+// إذا سويت تحضير ليوم راح، لازم كل الطلاب الحاليين يتحسبون بيه (حتى اللي انضافوا بعد ذاك اليوم)
+function backfillRoster(d){
+  const updates = {};
+  S.students.forEach(s => { if (d < s.added) updates['students/' + s.id + '/added'] = d; });
+  if (Object.keys(updates).length) subjectRef.update(updates);
+}
 
 let curDate = todayStr();
 let lastToday = curDate;
@@ -433,7 +439,7 @@ $('newGroup').addEventListener('change', () => {
 });
 function isLocked(d){ return !!(S.locked && S.locked[d]); }
 function lockDay(d){ subjectRef.child('attendance/' + d + '/locked').set(true); }
-function unlockDay(d){ subjectRef.child('attendance/' + d + '/locked').remove(); }
+function unlockDay(d){ backfillRoster(d); subjectRef.child('attendance/' + d + '/locked').remove(); }
 function toggle(id){
   if (isLocked(curDate)) { alert('هذا اليوم محفوظ. اضغط "تعديل" حتى تكدر تغيّره.'); return; }
   const s = S.students.find(x => x.id === id); if (!s) return;
@@ -697,7 +703,7 @@ function restore(file){
 /* ---------- الأحداث ---------- */
 $('addBtn').addEventListener('click', addStudents);
 $('newSection').addEventListener('keydown', e => { if (e.key === 'Enter') addStudents(); });
-$('dayPick').addEventListener('change', e => { curDate = e.target.value || todayStr(); e.target.value = curDate; render(); });
+$('dayPick').addEventListener('change', e => { curDate = e.target.value || todayStr(); e.target.value = curDate; backfillRoster(curDate); render(); });
 $('todayBtn').addEventListener('click', () => { curDate = todayStr(); $('dayPick').value = curDate; render(); });
 $('grpChips').addEventListener('click', e => { const b = e.target.closest('[data-grp]'); if (b) { curGroup = b.dataset.grp; curSec = ''; render(); } });
 $('chips').addEventListener('click', e => { const b = e.target.closest('[data-sec]'); if (b) { curSec = b.dataset.sec; render(); } });
@@ -707,7 +713,7 @@ $('list').addEventListener('click', e => {
 });
 $('history').addEventListener('click', e => {
   const o = e.target.closest('[data-open]');
-  if (o) { curDate = o.dataset.open; $('dayPick').value = curDate; render(); $('dayPick').scrollIntoView({behavior:'smooth',block:'center'}); return; }
+  if (o) { curDate = o.dataset.open; $('dayPick').value = curDate; backfillRoster(curDate); render(); $('dayPick').scrollIntoView({behavior:'smooth',block:'center'}); return; }
   const lk = e.target.closest('[data-lock]'); if (lk) { lockDay(lk.dataset.lock); return; }
   const ed = e.target.closest('[data-edit]'); if (ed) { unlockDay(ed.dataset.edit); return; }
   const r = e.target.closest('[data-rm]'); if (r) removeDay(r.dataset.rm);
