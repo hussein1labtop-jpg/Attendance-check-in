@@ -77,6 +77,9 @@ button:hover{background:#f3f6fa}
 .hday .d{flex:1;min-width:150px}
 .hday .ok{color:var(--ok);font-weight:600;font-size:14px}
 .hday .no{color:var(--no);font-weight:600;font-size:14px}
+.hday .gstats{display:flex;gap:14px;flex-wrap:wrap}
+.hday .gst{font-size:13px;color:var(--mut)}
+.hday .gst b{color:var(--ink)}
 .hday button{padding:4px 12px;font-size:14px}
 .scroll{max-height:300px;overflow:auto}
 
@@ -418,8 +421,13 @@ function counts(s){
 function dayCounts(d){
   const st = S.students.filter(s => s.added <= d);
   const pr = S.present[d] || {};
-  let p = 0; st.forEach(s => { if (pr[s.id]) p++; });
-  return { p, a: st.length - p };
+  const res = {};
+  GROUPS.forEach(g => { res[g] = { p: 0, a: 0 }; });
+  st.forEach(s => {
+    const g = res[s.group] ? s.group : null; if (!g) return;
+    if (pr[s.id]) res[g].p++; else res[g].a++;
+  });
+  return res;
 }
 
 /* ---------- الإجراءات ---------- */
@@ -524,7 +532,7 @@ function render(){
     const dLocked = isLocked(d);
     return `<div class="hday">
       <div class="d"><b>${dayName(d)}</b> ${fmt(d)} ${dLocked?'<span class="lockbadge">🔒 محفوظ</span>':''}</div>
-      <span class="ok">حاضر ${c.p}</span><span class="no">غايب ${c.a}</span>
+      <div class="gstats">${GROUPS.map(g => `<span class="gst"><b>${esc(g)}:</b> <span class="ok">حاضر ${c[g].p}</span> <span class="no">غايب ${c[g].a}</span></span>`).join('')}</div>
       <button data-open="${d}">فتح</button>
       ${dLocked ? `<button data-edit="${d}">تعديل</button>` : `<button data-lock="${d}" class="btn-p">حفظ</button>`}
       <button data-rm="${d}">حذف</button>
