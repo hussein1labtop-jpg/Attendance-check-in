@@ -69,6 +69,8 @@ button:hover{background:#f3f6fa}
 .lockmsg{color:var(--accent-d);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .lockmsg button{padding:3px 12px;font-size:13px}
 .lockbadge{font-size:12px;color:var(--accent-d);font-weight:600;margin-inline-start:6px}
+.lockbadge.hol{color:#8a6414}
+.hol{color:#8a6414;font-weight:600}
 .del{border:none;background:none;color:var(--mut);padding:6px;font-size:16px}
 .del:hover{background:var(--no-bg)}
 
@@ -108,6 +110,7 @@ button:hover{background:#f3f6fa}
 .rep td.nm,.rep th.nm{text-align:right;white-space:normal;min-width:130px}
 .rep td.p{color:var(--ok);font-weight:700}
 .rep td.a{color:var(--no);font-weight:700}
+.rep td.h{color:#8a6414;font-size:11px}
 .rep .lg{font-size:12px;color:#555;margin-top:6px}
 .rep{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 
@@ -198,6 +201,7 @@ button:hover{background:#f3f6fa}
           <input type="date" id="dayPick">
         </div>
         <button id="todayBtn" style="flex:none;min-width:0">اليوم</button>
+        <button id="holidayBtn" style="flex:none;min-width:0">🎉 عطلة</button>
       </div>
       <div class="chips" id="grpChips"></div>
       <div class="chips" id="chips"></div>
@@ -345,12 +349,13 @@ function snapToS(v){
   v = v || {};
   const students = Object.keys(v.students || {}).map(id => ({ id, ...v.students[id] }));
   const days = Object.keys(v.attendance || {}).sort();
-  const present = {}, locked = {};
+  const present = {}, locked = {}, holiday = {};
   days.forEach(d => {
     present[d] = (v.attendance[d] && v.attendance[d].present) || {};
     if (v.attendance[d] && v.attendance[d].locked) locked[d] = true;
+    if (v.attendance[d] && v.attendance[d].holiday) holiday[d] = true;
   });
-  return { students, present, days, locked, title: v.title || '' };
+  return { students, present, days, locked, holiday, title: v.title || '' };
 }
 
 function countStudents(id, cb){
@@ -415,10 +420,11 @@ const sections = (grp) => [...new Set(S.students.filter(s => !grp || s.group ===
 
 function counts(s){
   let p = 0, t = 0;
-  S.days.forEach(d => { if (d >= s.added) { t++; if ((S.present[d]||{})[s.id]) p++; } });
+  S.days.forEach(d => { if (isHoliday(d)) return; if (d >= s.added) { t++; if ((S.present[d]||{})[s.id]) p++; } });
   return { p, t };
 }
 function dayCounts(d){
+  if (isHoliday(d)) return null;
   const st = S.students.filter(s => s.added <= d);
   const pr = S.present[d] || {};
   const res = {};
@@ -448,7 +454,13 @@ $('newGroup').addEventListener('change', () => {
 function isLocked(d){ return !!(S.locked && S.locked[d]); }
 function lockDay(d){ subjectRef.child('attendance/' + d + '/locked').set(true); }
 function unlockDay(d){ backfillRoster(d); subjectRef.child('attendance/' + d + '/locked').remove(); }
+function isHoliday(d){ return !!(S.holiday && S.holiday[d]); }
+function setHoliday(d, on){
+  if (on) { ensureDay(d); subjectRef.child('attendance/' + d + '/holiday').set(true); }
+  else subjectRef.child('attendance/' + d + '/holiday').remove();
+}
 function toggle(id){
+  if (isHoliday(curDate)) { alert('هذا اليوم عطلة، ما يسجل حضور أو غياب. الغي العطلة أول إذا تريد تسجل.'); return; }
   if (isLocked(curDate)) { alert('هذا اليوم محفوظ. اضغط "تعديل" حتى تكدر تغيّره.'); return; }
   const s = S.students.find(x => x.id === id); if (!s) return;
   ensureDay(curDate);
@@ -495,6 +507,7 @@ function render(){
   if (curSec && !secs.includes(curSec)) curSec = '';
 
   $('todayLabel').textContent = new Date().toLocaleDateString('ar-IQ',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  $('holidayBtn').textContent = isHoliday(curDate) ? '↩️ الغاء العطلة' : '🎉 عطلة';
   $('secList').innerHTML = sections($('newGroup').value).map(s => `<option value="${esc(s)}">`).join('');
 
   $('grpChips').innerHTML = ['',...GROUPS].map(g =>
@@ -506,15 +519,24 @@ function render(){
   const studs = sortedStudents().filter(s => (!curGroup || s.group === curGroup) && (!curSec || s.section === curSec));
   const pr = S.present[curDate] || {};
   let p = 0; studs.forEach(s => { if (pr[s.id]) p++; });
-  $('stats').innerHTML = `<span>المجموع: <b>${studs.length}</b></span><span>حاضر: <b style="color:var(--ok)">${p}</b></span><span>غايب: <b style="color:var(--no)">${studs.length-p}</b></span>`;
+  const holiday = isHoliday(curDate);
   const locked = isLocked(curDate);
-  if (locked) {
+  if (holiday) {
+    $('stats').innerHTML = `<span class="hol">📅 عطلة — ما يسجل حضور ولا غياب</span>`;
+  } else {
+    $('stats').innerHTML = `<span>المجموع: <b>${studs.length}</b></span><span>حاضر: <b style="color:var(--ok)">${p}</b></span><span>غايب: <b style="color:var(--no)">${studs.length-p}</b></span>`;
+  }
+  if (holiday) {
+    $('dayNote').innerHTML = '<p class="note lockmsg">📅 هذا اليوم عطلة. <button data-cancelholiday="1">إلغاء العطلة</button></p>';
+  } else if (locked) {
     $('dayNote').innerHTML = '<p class="note lockmsg">🔒 هذا اليوم محفوظ ومقفل. <button data-editcur="1">تعديل</button></p>';
   } else {
     $('dayNote').innerHTML = S.days.includes(curDate) ? '' : '<p class="note">هذا اليوم مو مسجل بالسجل. أول ما تضغط ✓ يندرج.</p>';
   }
 
-  if (!S.students.length) $('list').innerHTML = '<p class="empty">ما اكو طلاب لحد الآن. ضيف أول طالب من فوق.</p>';
+  if (holiday) {
+    $('list').innerHTML = '<p class="empty">📅 اليوم عطلة. ما اكو تسجيل حضور بهذا اليوم.</p>';
+  } else if (!S.students.length) $('list').innerHTML = '<p class="empty">ما اكو طلاب لحد الآن. ضيف أول طالب من فوق.</p>';
   else if (!studs.length) $('list').innerHTML = '<p class="empty">ما اكو طلاب بهذا الفلتر.</p>';
   else $('list').innerHTML = studs.map(s => {
     const on = !!pr[s.id], c = counts(s);
@@ -530,11 +552,13 @@ function render(){
   $('history').innerHTML = days.length ? days.map(d => {
     const c = dayCounts(d);
     const dLocked = isLocked(d);
+    const dHoliday = isHoliday(d);
     return `<div class="hday">
-      <div class="d"><b>${dayName(d)}</b> ${fmt(d)} ${dLocked?'<span class="lockbadge">🔒 محفوظ</span>':''}</div>
-      <div class="gstats">${GROUPS.map(g => `<span class="gst"><b>${esc(g)}:</b> <span class="ok">حاضر ${c[g].p}</span> <span class="no">غايب ${c[g].a}</span></span>`).join('')}</div>
+      <div class="d"><b>${dayName(d)}</b> ${fmt(d)} ${dHoliday?'<span class="lockbadge hol">📅 عطلة</span>':dLocked?'<span class="lockbadge">🔒 محفوظ</span>':''}</div>
+      <div class="gstats">${dHoliday ? '<span class="gst">لا يوجد تسجيل — يوم عطلة</span>' : GROUPS.map(g => `<span class="gst"><b>${esc(g)}:</b> <span class="ok">حاضر ${c[g].p}</span> <span class="no">غايب ${c[g].a}</span></span>`).join('')}</div>
       <button data-open="${d}">فتح</button>
-      ${dLocked ? `<button data-edit="${d}">تعديل</button>` : `<button data-lock="${d}" class="btn-p">حفظ</button>`}
+      ${dHoliday ? `<button data-unholiday="${d}">إلغاء العطلة</button>` : dLocked ? `<button data-edit="${d}">تعديل</button>` : `<button data-lock="${d}" class="btn-p">حفظ</button>`}
+      ${dHoliday ? '' : `<button data-holiday2="${d}">عطلة</button>`}
       <button data-rm="${d}">حذف</button>
     </div>`;
   }).join('') : '<p class="empty">ما اكو أيام مسجلة.</p>';
@@ -560,6 +584,7 @@ function getReport(){
       rows: all.filter(s => s.group === g && s.section === sc).map(s => {
         let p = 0, a = 0;
         const cells = days.map(d => {
+          if (isHoliday(d)) return 'H';
           if (d < s.added) return null;
           if ((S.present[d]||{})[s.id]) { p++; return 1; }
           a++; return 0;
@@ -586,13 +611,13 @@ function reportHTML(){
         `<th>حاضر</th><th>غائب</th></tr></thead><tbody>`;
       g.rows.forEach((x,i) => {
         h += `<tr><td>${i+1}</td><td class="nm">${esc(x.name)}</td>` +
-          x.cells.map(c => c===1 ? '<td class="p">✓</td>' : c===0 ? '<td class="a">✗</td>' : '<td>-</td>').join('') +
+          x.cells.map(c => c===1 ? '<td class="p">✓</td>' : c===0 ? '<td class="a">✗</td>' : c==='H' ? '<td class="h">عطلة</td>' : '<td>-</td>').join('') +
           `<td>${x.p}</td><td>${x.a}</td></tr>`;
       });
       h += `</tbody></table></div>`;
     });
   });
-  return h + `<p class="lg">✓ حاضر &nbsp; ✗ غائب &nbsp; - قبل تسجيل الطالب</p></div>`;
+  return h + `<p class="lg">✓ حاضر &nbsp; ✗ غائب &nbsp; - قبل تسجيل الطالب &nbsp; عطلة = يوم عطلة</p></div>`;
 }
 function openPreview(){ $('mBody').innerHTML = reportHTML(); $('modal').classList.add('open'); }
 function closePreview(){ $('modal').classList.remove('open'); }
@@ -678,7 +703,7 @@ function exportExcel(){
       while (used[nm]) nm = base.slice(0,28) + ' ' + (i++);
       used[nm] = 1;
       const rows = [[title], ['المجموعة: ' + b.group + '   —   الشعبة: ' + g.name], [], ['#','الاسم', ...r.days.map(fmt), 'حاضر','غائب']];
-      g.rows.forEach((x,i) => rows.push([i+1, x.name, ...x.cells.map(c => c===1 ? 'حاضر' : c===0 ? 'غائب' : '-'), x.p, x.a]));
+      g.rows.forEach((x,i) => rows.push([i+1, x.name, ...x.cells.map(c => c===1 ? 'حاضر' : c===0 ? 'غائب' : c==='H' ? 'عطلة' : '-'), x.p, x.a]));
       sheets.push({ name: nm, rows });
     });
   });
@@ -713,6 +738,7 @@ $('addBtn').addEventListener('click', addStudents);
 $('newSection').addEventListener('keydown', e => { if (e.key === 'Enter') addStudents(); });
 $('dayPick').addEventListener('change', e => { curDate = e.target.value || todayStr(); e.target.value = curDate; backfillRoster(curDate); render(); });
 $('todayBtn').addEventListener('click', () => { curDate = todayStr(); $('dayPick').value = curDate; render(); });
+$('holidayBtn').addEventListener('click', () => setHoliday(curDate, !isHoliday(curDate)));
 $('grpChips').addEventListener('click', e => { const b = e.target.closest('[data-grp]'); if (b) { curGroup = b.dataset.grp; curSec = ''; render(); } });
 $('chips').addEventListener('click', e => { const b = e.target.closest('[data-sec]'); if (b) { curSec = b.dataset.sec; render(); } });
 $('list').addEventListener('click', e => {
@@ -724,10 +750,13 @@ $('history').addEventListener('click', e => {
   if (o) { curDate = o.dataset.open; $('dayPick').value = curDate; backfillRoster(curDate); render(); $('dayPick').scrollIntoView({behavior:'smooth',block:'center'}); return; }
   const lk = e.target.closest('[data-lock]'); if (lk) { lockDay(lk.dataset.lock); return; }
   const ed = e.target.closest('[data-edit]'); if (ed) { unlockDay(ed.dataset.edit); return; }
+  const h2 = e.target.closest('[data-holiday2]'); if (h2) { setHoliday(h2.dataset.holiday2, true); return; }
+  const uh = e.target.closest('[data-unholiday]'); if (uh) { setHoliday(uh.dataset.unholiday, false); return; }
   const r = e.target.closest('[data-rm]'); if (r) removeDay(r.dataset.rm);
 });
 $('dayNote').addEventListener('click', e => {
   if (e.target.closest('[data-editcur]')) unlockDay(curDate);
+  if (e.target.closest('[data-cancelholiday]')) setHoliday(curDate, false);
 });
 let titleTimer;
 $('repTitle').addEventListener('input', e => {
