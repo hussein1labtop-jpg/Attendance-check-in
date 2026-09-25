@@ -63,10 +63,16 @@ button:hover{background:#f3f6fa}
 .tag{display:inline-block;font-size:12px;background:var(--head);border-radius:4px;padding:0 7px;margin-inline-end:6px}
 .state{font-size:14px;font-weight:600;min-width:46px;text-align:center;color:var(--no)}
 .stu.on .state{color:var(--ok)}
+.stu.exc .state{color:#8a6414}
 .chk{width:46px;height:46px;padding:0;border:2px solid var(--line);border-radius:8px;font-size:26px;line-height:1;color:transparent;background:#fff}
 .stu.on .chk{background:var(--ok);border-color:var(--ok);color:#fff}
 .chk:disabled{opacity:.55;cursor:not-allowed}
+.chkE{width:52px;height:46px;padding:0;border:2px solid var(--line);border-radius:8px;font-size:12px;font-weight:700;color:var(--mut);background:#fff;flex:none}
+.chkE.on{background:#fff3cd;border-color:#e2c477;color:#8a6414}
+.chkE:disabled{opacity:.55;cursor:not-allowed}
 .stu.locked{opacity:.85}
+.savebar{padding:14px 0 4px;border-top:1px solid var(--line);margin-top:6px;text-align:center}
+.savebar button{min-height:44px;padding:0 26px;font-size:15px}
 .lockmsg{color:var(--accent-d);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .lockmsg button{padding:3px 12px;font-size:13px}
 .lockbadge{font-size:12px;color:var(--accent-d);font-weight:600;margin-inline-start:6px}
@@ -83,6 +89,7 @@ button:hover{background:#f3f6fa}
 .hday .gstats{display:flex;gap:14px;flex-wrap:wrap}
 .hday .gst{font-size:13px;color:var(--mut)}
 .hday .gst b{color:var(--ink)}
+.hday .exct{color:#8a6414}
 .hday button{padding:4px 12px;font-size:14px}
 .scroll{max-height:300px;overflow:auto}
 
@@ -112,6 +119,7 @@ button:hover{background:#f3f6fa}
 .rep td.p{color:var(--ok);font-weight:700}
 .rep td.a{color:var(--no);font-weight:700}
 .rep td.h{color:#8a6414;font-size:11px}
+.rep td.e{color:#8a6414;font-size:11px;background:#fff3cd}
 .rep .lg{font-size:12px;color:#555;margin-top:6px}
 .rep{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 
@@ -136,6 +144,8 @@ button:hover{background:#f3f6fa}
 #picker{max-width:640px;margin:0 auto;padding:24px 14px 60px}
 #picker h1{text-align:center;margin-bottom:4px}
 #picker p.sub{text-align:center;color:var(--mut);margin:0 0 22px}
+.madeby{text-align:center;font-size:11px;color:#aab2bc;margin:26px 0 0}
+.madeby a{color:#aab2bc;text-decoration:underline}
 .subj-list{display:flex;flex-direction:column;gap:10px}
 .subj-btn{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:right;padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:#fff}
 .subj-btn:hover{background:#f3f6fa;border-color:var(--accent)}
@@ -154,6 +164,7 @@ button:hover{background:#f3f6fa}
   <h1>سجل حضور الطلاب</h1>
   <p class="sub">اختر المادة</p>
   <div class="subj-list" id="subjList"><p class="empty">جاري الاتصال بالخادم…</p></div>
+  <p class="madeby">Made by <a href="https://hussein1labtop-jpg.github.io/Profile-/" target="_blank" rel="noopener">Hussein</a></p>
 </div>
 
 <div class="wrap" id="app" style="display:none">
@@ -344,19 +355,20 @@ firebase.database().ref('.info/connected').on('value', snap => {
 let curSubjectId = null;
 let subjectRef = null;
 let subjectListener = null;
-let S = { students: [], present: {}, days: [], locked: {}, title: '' };
+let S = { students: [], present: {}, excused: {}, days: [], locked: {}, title: '' };
 
 function snapToS(v){
   v = v || {};
   const students = Object.keys(v.students || {}).map(id => ({ id, ...v.students[id] }));
   const days = Object.keys(v.attendance || {}).sort();
-  const present = {}, locked = {}, holiday = {};
+  const present = {}, excused = {}, locked = {}, holiday = {};
   days.forEach(d => {
     present[d] = (v.attendance[d] && v.attendance[d].present) || {};
+    excused[d] = (v.attendance[d] && v.attendance[d].excused) || {};
     if (v.attendance[d] && v.attendance[d].locked) locked[d] = true;
     if (v.attendance[d] && v.attendance[d].holiday) holiday[d] = true;
   });
-  return { students, present, days, locked, holiday, title: v.title || '' };
+  return { students, present, excused, days, locked, holiday, title: v.title || '' };
 }
 
 function countStudents(id, cb){
@@ -427,12 +439,14 @@ function counts(s){
 function dayCounts(d){
   if (isHoliday(d)) return null;
   const st = S.students.filter(s => s.added <= d);
-  const pr = S.present[d] || {};
+  const pr = S.present[d] || {}, ex = S.excused[d] || {};
   const res = {};
-  GROUPS.forEach(g => { res[g] = { p: 0, a: 0 }; });
+  GROUPS.forEach(g => { res[g] = { p: 0, a: 0, e: 0 }; });
   st.forEach(s => {
     const g = res[s.group] ? s.group : null; if (!g) return;
-    if (pr[s.id]) res[g].p++; else res[g].a++;
+    if (pr[s.id]) res[g].p++;
+    else if (ex[s.id]) res[g].e++;
+    else res[g].a++;
   });
   return res;
 }
@@ -469,6 +483,20 @@ function toggle(id){
   if (pr[id]) subjectRef.child('attendance/' + curDate + '/present/' + id).remove();
   else {
     subjectRef.child('attendance/' + curDate + '/present/' + id).set(true);
+    if ((S.excused[curDate]||{})[id]) subjectRef.child('attendance/' + curDate + '/excused/' + id).remove();
+    if (curDate < s.added) subjectRef.child('students/' + id + '/added').set(curDate);
+  }
+}
+function toggleExcused(id){
+  if (isHoliday(curDate)) { alert('هذا اليوم عطلة. الغي العطلة أول إذا تريد تسجل.'); return; }
+  if (isLocked(curDate)) { alert('هذا اليوم محفوظ. اضغط "تعديل" حتى تكدر تغيّره.'); return; }
+  const s = S.students.find(x => x.id === id); if (!s) return;
+  ensureDay(curDate);
+  const ex = S.excused[curDate] || {};
+  if (ex[id]) subjectRef.child('attendance/' + curDate + '/excused/' + id).remove();
+  else {
+    subjectRef.child('attendance/' + curDate + '/excused/' + id).set(true);
+    if ((S.present[curDate]||{})[id]) subjectRef.child('attendance/' + curDate + '/present/' + id).remove();
     if (curDate < s.added) subjectRef.child('students/' + id + '/added').set(curDate);
   }
 }
@@ -518,14 +546,14 @@ function render(){
   refreshRepSec();
 
   const studs = sortedStudents().filter(s => (!curGroup || s.group === curGroup) && (!curSec || s.section === curSec));
-  const pr = S.present[curDate] || {};
-  let p = 0; studs.forEach(s => { if (pr[s.id]) p++; });
+  const pr = S.present[curDate] || {}, ex = S.excused[curDate] || {};
+  let p = 0, e = 0; studs.forEach(s => { if (pr[s.id]) p++; else if (ex[s.id]) e++; });
   const holiday = isHoliday(curDate);
   const locked = isLocked(curDate);
   if (holiday) {
     $('stats').innerHTML = `<span class="hol">📅 عطلة — ما يسجل حضور ولا غياب</span>`;
   } else {
-    $('stats').innerHTML = `<span>المجموع: <b>${studs.length}</b></span><span>حاضر: <b style="color:var(--ok)">${p}</b></span><span>غايب: <b style="color:var(--no)">${studs.length-p}</b></span>`;
+    $('stats').innerHTML = `<span>المجموع: <b>${studs.length}</b></span><span>حاضر: <b style="color:var(--ok)">${p}</b></span><span>غايب: <b style="color:var(--no)">${studs.length-p-e}</b></span><span>مجاز: <b style="color:#8a6414">${e}</b></span>`;
   }
   if (holiday) {
     $('dayNote').innerHTML = '<p class="note lockmsg">📅 هذا اليوم عطلة. <button data-cancelholiday="1">إلغاء العطلة</button></p>';
@@ -540,14 +568,18 @@ function render(){
   } else if (!S.students.length) $('list').innerHTML = '<p class="empty">ما اكو طلاب لحد الآن. ضيف أول طالب من فوق.</p>';
   else if (!studs.length) $('list').innerHTML = '<p class="empty">ما اكو طلاب بهذا الفلتر.</p>';
   else $('list').innerHTML = studs.map(s => {
-    const on = !!pr[s.id], c = counts(s);
-    return `<div class="stu ${on?'on':''}${locked?' locked':''}">
+    const on = !!pr[s.id], isExc = !!ex[s.id], c = counts(s);
+    return `<div class="stu ${on?'on':''}${isExc?' exc':''}${locked?' locked':''}">
       <div class="info"><b>${esc(s.name)}</b><span class="tag">${esc(s.group)} — ${esc(s.section)}</span><small>حضر ${c.p} من ${c.t} يوم</small></div>
-      <div class="state">${on?'حاضر':'غايب'}</div>
+      <div class="state">${on?'حاضر':isExc?'مجاز':'غايب'}</div>
       <button class="chk" data-id="${s.id}" aria-label="تسجيل حضور ${esc(s.name)}"${locked?' disabled':''}>✓</button>
+      <button class="chkE ${isExc?'on':''}" data-idexc="${s.id}" aria-label="مجاز ${esc(s.name)}"${locked?' disabled':''}>مجاز</button>
       <button class="del" data-del="${s.id}" aria-label="حذف ${esc(s.name)}">🗑</button>
     </div>`;
   }).join('');
+  if (!holiday && S.students.length && studs.length) {
+    $('list').innerHTML += `<div class="savebar">${locked ? '<button data-editcur2="1">تعديل</button>' : '<button class="btn-p" data-lockcur="1">💾 حفظ اليوم</button>'}</div>`;
+  }
 
   const days = [...S.days].sort().reverse();
   $('history').innerHTML = days.length ? days.map(d => {
@@ -556,10 +588,8 @@ function render(){
     const dHoliday = isHoliday(d);
     return `<div class="hday">
       <div class="d"><b>${dayName(d)}</b> ${fmt(d)} ${dHoliday?'<span class="lockbadge hol">📅 عطلة</span>':dLocked?'<span class="lockbadge">🔒 محفوظ</span>':''}</div>
-      <div class="gstats">${dHoliday ? '<span class="gst">لا يوجد تسجيل — يوم عطلة</span>' : GROUPS.map(g => `<span class="gst"><b>${esc(g)}:</b> <span class="ok">حاضر ${c[g].p}</span> <span class="no">غايب ${c[g].a}</span></span>`).join('')}</div>
+      <div class="gstats">${dHoliday ? '<span class="gst">لا يوجد تسجيل — يوم عطلة</span>' : GROUPS.map(g => `<span class="gst"><b>${esc(g)}:</b> <span class="ok">حاضر ${c[g].p}</span> <span class="no">غايب ${c[g].a}</span> <span class="exct">مجاز ${c[g].e}</span></span>`).join('')}</div>
       <button data-open="${d}">فتح</button>
-      ${dHoliday ? `<button data-unholiday="${d}">إلغاء العطلة</button>` : dLocked ? `<button data-edit="${d}">تعديل</button>` : `<button data-lock="${d}" class="btn-p">حفظ</button>`}
-      ${dHoliday ? '' : `<button data-holiday2="${d}">عطلة</button>`}
       <button data-rm="${d}">حذف</button>
     </div>`;
   }).join('') : '<p class="empty">ما اكو أيام مسجلة.</p>';
@@ -583,14 +613,15 @@ function getReport(){
     const secBlocks = secsInG.map(sc => ({
       name: sc,
       rows: all.filter(s => s.group === g && s.section === sc).map(s => {
-        let p = 0, a = 0;
+        let p = 0, a = 0, ex = 0;
         const cells = days.map(d => {
           if (isHoliday(d)) return 'H';
           if (d < s.added) return null;
           if ((S.present[d]||{})[s.id]) { p++; return 1; }
+          if ((S.excused[d]||{})[s.id]) { ex++; return 'E'; }
           a++; return 0;
         });
-        return { name: s.name, cells, p, a };
+        return { name: s.name, cells, p, a, ex };
       })
     })).filter(sb => sb.rows.length);
     return { group: g, sections: secBlocks };
@@ -604,21 +635,21 @@ function reportHTML(){
   let h = `<div class="rep"><h2 class="rt">${esc(title)}</h2>
     <p class="rs">من ${fmt(r.days[0])} إلى ${fmt(r.days[r.days.length-1])} — عدد الأيام: ${r.days.length}</p>`;
   r.blocks.forEach((b, bi) => {
-    let tp = 0, ta = 0; b.sections.forEach(g => g.rows.forEach(x => { tp += x.p; ta += x.a; }));
-    h += `<h2 class="gtitle${bi>0?' brk':''}">المجموعة: ${esc(b.group)} <small>(إجمالي: حاضر ${tp} — غايب ${ta})</small></h2>`;
+    let tp = 0, ta = 0, te = 0; b.sections.forEach(g => g.rows.forEach(x => { tp += x.p; ta += x.a; te += x.ex; }));
+    h += `<h2 class="gtitle${bi>0?' brk':''}">المجموعة: ${esc(b.group)} <small>(إجمالي: حاضر ${tp} — غايب ${ta} — مجاز ${te})</small></h2>`;
     b.sections.forEach(g => {
       h += `<h3>الشعبة: ${esc(g.name)}</h3><div class="tw"><table><thead><tr><th>#</th><th class="nm">الاسم</th>` +
         r.days.map(d => { const x = d.split('-'); return `<th>${x[2]}/${x[1]}<small>${x[0]}</small></th>`; }).join('') +
-        `<th>حاضر</th><th>غائب</th></tr></thead><tbody>`;
+        `<th>حاضر</th><th>غائب</th><th>مجاز</th></tr></thead><tbody>`;
       g.rows.forEach((x,i) => {
         h += `<tr><td>${i+1}</td><td class="nm">${esc(x.name)}</td>` +
-          x.cells.map(c => c===1 ? '<td class="p">✓</td>' : c===0 ? '<td class="a">✗</td>' : c==='H' ? '<td class="h">عطلة</td>' : '<td>-</td>').join('') +
-          `<td>${x.p}</td><td>${x.a}</td></tr>`;
+          x.cells.map(c => c===1 ? '<td class="p">✓</td>' : c===0 ? '<td class="a">✗</td>' : c==='H' ? '<td class="h">عطلة</td>' : c==='E' ? '<td class="e">مجاز</td>' : '<td>-</td>').join('') +
+          `<td>${x.p}</td><td>${x.a}</td><td>${x.ex}</td></tr>`;
       });
       h += `</tbody></table></div>`;
     });
   });
-  return h + `<p class="lg">✓ حاضر &nbsp; ✗ غائب &nbsp; - قبل تسجيل الطالب &nbsp; عطلة = يوم عطلة</p></div>`;
+  return h + `<p class="lg">✓ حاضر &nbsp; ✗ غائب &nbsp; - قبل تسجيل الطالب &nbsp; عطلة = يوم عطلة &nbsp; مجاز = إجازة معتمدة</p></div>`;
 }
 function openPreview(){ $('mBody').innerHTML = reportHTML(); $('modal').classList.add('open'); }
 function closePreview(){ $('modal').classList.remove('open'); }
@@ -703,8 +734,8 @@ function exportExcel(){
       const base = nm; let i = 2;
       while (used[nm]) nm = base.slice(0,28) + ' ' + (i++);
       used[nm] = 1;
-      const rows = [[title], ['المجموعة: ' + b.group + '   —   الشعبة: ' + g.name], [], ['#','الاسم', ...r.days.map(fmt), 'حاضر','غائب']];
-      g.rows.forEach((x,i) => rows.push([i+1, x.name, ...x.cells.map(c => c===1 ? 'حاضر' : c===0 ? 'غائب' : c==='H' ? 'عطلة' : '-'), x.p, x.a]));
+      const rows = [[title], ['المجموعة: ' + b.group + '   —   الشعبة: ' + g.name], [], ['#','الاسم', ...r.days.map(fmt), 'حاضر','غائب','مجاز']];
+      g.rows.forEach((x,i) => rows.push([i+1, x.name, ...x.cells.map(c => c===1 ? 'حاضر' : c===0 ? 'غائب' : c==='H' ? 'عطلة' : c==='E' ? 'مجاز' : '-'), x.p, x.a, x.ex]));
       sheets.push({ name: nm, rows });
     });
   });
@@ -723,10 +754,11 @@ function restore(file){
       if (!Array.isArray(d.students) || !Array.isArray(d.days) || typeof d.present !== 'object') throw new Error();
       if (!confirm('راح تستبدل بيانات هذه المادة عند الجميع (كل من يفتح نفس المادة) بالنسخة الاحتياطية. تكمل؟')) return;
       const raw = { title: d.title || '', students: {}, attendance: {} };
-      d.students.forEach(s => { raw.students[s.id] = { name: s.name, section: s.section, added: s.added }; });
+      d.students.forEach(s => { raw.students[s.id] = { name: s.name, section: s.section, group: s.group || 'ولد', added: s.added }; });
       d.days.forEach(day => {
-        raw.attendance[day] = { opened: true, present: d.present[day] || {} };
+        raw.attendance[day] = { opened: true, present: d.present[day] || {}, excused: (d.excused && d.excused[day]) || {} };
         if (d.locked && d.locked[day]) raw.attendance[day].locked = true;
+        if (d.holiday && d.holiday[day]) raw.attendance[day].holiday = true;
       });
       subjectRef.set(raw);
     } catch (e) { alert('الملف مو صالح'); }
@@ -744,15 +776,14 @@ $('grpChips').addEventListener('click', e => { const b = e.target.closest('[data
 $('chips').addEventListener('click', e => { const b = e.target.closest('[data-sec]'); if (b) { curSec = b.dataset.sec; render(); } });
 $('list').addEventListener('click', e => {
   const c = e.target.closest('[data-id]'); if (c) { toggle(c.dataset.id); return; }
+  const ie = e.target.closest('[data-idexc]'); if (ie) { toggleExcused(ie.dataset.idexc); return; }
+  const lc = e.target.closest('[data-lockcur]'); if (lc) { lockDay(curDate); return; }
+  const ec = e.target.closest('[data-editcur2]'); if (ec) { unlockDay(curDate); return; }
   const d = e.target.closest('[data-del]'); if (d) delStudent(d.dataset.del);
 });
 $('history').addEventListener('click', e => {
   const o = e.target.closest('[data-open]');
   if (o) { curDate = o.dataset.open; $('dayPick').value = curDate; backfillRoster(curDate); render(); $('dayPick').scrollIntoView({behavior:'smooth',block:'center'}); return; }
-  const lk = e.target.closest('[data-lock]'); if (lk) { lockDay(lk.dataset.lock); return; }
-  const ed = e.target.closest('[data-edit]'); if (ed) { unlockDay(ed.dataset.edit); return; }
-  const h2 = e.target.closest('[data-holiday2]'); if (h2) { setHoliday(h2.dataset.holiday2, true); return; }
-  const uh = e.target.closest('[data-unholiday]'); if (uh) { setHoliday(uh.dataset.unholiday, false); return; }
   const r = e.target.closest('[data-rm]'); if (r) removeDay(r.dataset.rm);
 });
 $('dayNote').addEventListener('click', e => {
