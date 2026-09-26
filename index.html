@@ -349,13 +349,65 @@ firebase.database().ref('.info/connected').on('value', snap => {
   const on = snap.val() === true;
   const b = $('connBadge');
   if (b) { b.classList.toggle('on', on); b.title = on ? 'متصل' : 'غير متصل — التغييرات تنحفظ وترسل أول ما يرجع النت'; }
+  if (on) attemptFlush();
 });
 
-/* ---------- البيانات ---------- */
+/* ---------- البيانات (تعمل بدون نت: كاش محلي + طابور إرسال معلّق) ---------- */
 let curSubjectId = null;
 let subjectRef = null;
 let subjectListener = null;
+let remoteRaw = {};
+let pendingOps = [];
 let S = { students: [], present: {}, excused: {}, days: [], locked: {}, title: '' };
+
+function outboxKey(id){ return 'att_outbox_' + id; }
+function cacheKey(id){ return 'att_cache_' + id; }
+function loadJSON(key, fallback){ try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fallback; } catch(e) { return fallback; } }
+function saveJSON(key, v){ try { localStorage.setItem(key, JSON.stringify(v)); } catch(e) {} }
+
+function setPath(obj, path, value){
+  const parts = path.split('/'); let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const k = parts[i];
+    if (typeof cur[k] !== 'object' || cur[k] === null) cur[k] = {};
+    cur = cur[k];
+  }
+  const last = parts[parts.length - 1];
+  if (value === null) delete cur[last]; else cur[last] = value;
+}
+function applyPending(raw, ops){
+  const out = JSON.parse(JSON.stringify(raw || {}));
+  ops.forEach(op => setPath(out, op.path, op.value));
+  return out;
+}
+function recompute(){ S = snapToS(applyPending(remoteRaw, pendingOps)); }
+
+// يسجل التغيير محلياً فوراً (يشتغل بدون نت)، وبنفس الوقت يحاول يرسله. يبقى بالطابور المحلي لين يتأكد وصوله.
+function queueWrite(path, value){
+  pendingOps = pendingOps.filter(op => op.path !== path);
+  pendingOps.push({ path, value });
+  saveJSON(outboxKey(curSubjectId), pendingOps);
+  recompute(); render();
+  attemptFlush();
+}
+function queueWriteMulti(updates){
+  Object.keys(updates).forEach(path => {
+    pendingOps = pendingOps.filter(op => op.path !== path);
+    pendingOps.push({ path, value: updates[path] });
+  });
+  saveJSON(outboxKey(curSubjectId), pendingOps);
+  recompute(); render();
+  attemptFlush();
+}
+function attemptFlush(){
+  if (!subjectRef || !pendingOps.length) return;
+  [...pendingOps].forEach(op => {
+    subjectRef.child(op.path).set(op.value).then(() => {
+      pendingOps = pendingOps.filter(o => !(o.path === op.path && o.value === op.value));
+      saveJSON(outboxKey(curSubjectId), pendingOps);
+    }).catch(() => { /* يبقى بالطابور، يعاد إرساله لاحقاً */ });
+  });
+}
 
 function snapToS(v){
   v = v || {};
@@ -372,12 +424,13 @@ function snapToS(v){
 }
 
 function countStudents(id, cb){
+  const cached = loadJSON(cacheKey(id), null);
+  if (cached && cached.students) cb(Object.keys(cached.students).length);
   fbdb.ref('subjects/' + id + '/students').once('value')
     .then(s => cb(Object.keys(s.val() || {}).length))
-    .catch(() => cb('؟'));
+    .catch(() => { if (!cached) cb('؟'); });
 }
 function renderPicker(){
-  if (!authReady) { $('subjList').innerHTML = '<p class="empty">جاري الاتصال بالخادم…</p>'; return; }
   $('subjList').innerHTML = SUBJECTS.map(sub =>
     `<button class="subj-btn" data-subj="${sub.id}"><span><b>${esc(subjLabel(sub))}</b></span><span class="cnt" id="cnt-${sub.id}">…</span></button>`
   ).join('');
@@ -393,12 +446,23 @@ function openSubject(id){
   $('dayPick').value = curDate;
   $('picker').style.display = 'none';
   $('app').style.display = '';
+
+  // نطلع أول شي من الكاش المحلي (يشتغل فوراً حتى بدون نت)، وبعدها نتصل بالسيرفر
+  remoteRaw = loadJSON(cacheKey(id), {});
+  pendingOps = loadJSON(outboxKey(id), []);
+  recompute();
+  $('repTitle').value = S.title || '';
+  render();
+
   let first = true;
   subjectListener = subjectRef.on('value', snap => {
-    S = snapToS(snap.val());
+    remoteRaw = snap.val() || {};
+    saveJSON(cacheKey(id), remoteRaw);
+    recompute();
     if (first) { first = false; $('repTitle').value = S.title || ''; ensureDay(todayStr()); }
     render();
-  }, err => { alert('تعذر تحميل بيانات المادة: ' + err.message); });
+    attemptFlush();
+  }, err => { console.warn('تعذر تحميل بيانات المادة (يشتغل من الكاش المحلي):', err.message); });
 }
 function backToPicker(){
   if (subjectListener) { subjectRef.off('value', subjectListener); subjectListener = null; }
@@ -413,12 +477,12 @@ $('subjList').addEventListener('click', e => {
 $('switchSubj').addEventListener('click', backToPicker);
 
 // students: {id,name,section,added}   present: {'YYYY-MM-DD': {studentId:1}}   days: أيام فتحت بيها التطبيق
-function ensureDay(d){ if (!S.days.includes(d)) subjectRef.child('attendance/' + d + '/opened').set(true); }
+function ensureDay(d){ if (!S.days.includes(d)) queueWrite('attendance/' + d + '/opened', true); }
 // إذا سويت تحضير ليوم راح، لازم كل الطلاب الحاليين يتحسبون بيه (حتى اللي انضافوا بعد ذاك اليوم)
 function backfillRoster(d){
   const updates = {};
   S.students.forEach(s => { if (d < s.added) updates['students/' + s.id + '/added'] = d; });
-  if (Object.keys(updates).length) subjectRef.update(updates);
+  if (Object.keys(updates).length) queueWriteMulti(updates);
 }
 
 let curDate = todayStr();
@@ -459,7 +523,7 @@ function addStudents(){
   if (!names.length || !sec) { alert('اكتب اسم الطالب والشعبة'); return; }
   const updates = {};
   names.forEach(n => { updates['students/' + uid()] = { name: n, section: sec, group: grp, added: todayStr() }; });
-  subjectRef.update(updates);
+  queueWriteMulti(updates);
   $('newName').value = '';
   $('newName').focus();
 }
@@ -467,12 +531,12 @@ $('newGroup').addEventListener('change', () => {
   $('secList').innerHTML = sections($('newGroup').value).map(s => `<option value="${esc(s)}">`).join('');
 });
 function isLocked(d){ return !!(S.locked && S.locked[d]); }
-function lockDay(d){ subjectRef.child('attendance/' + d + '/locked').set(true); }
-function unlockDay(d){ backfillRoster(d); subjectRef.child('attendance/' + d + '/locked').remove(); }
+function lockDay(d){ queueWrite('attendance/' + d + '/locked', true); }
+function unlockDay(d){ backfillRoster(d); queueWrite('attendance/' + d + '/locked', null); }
 function isHoliday(d){ return !!(S.holiday && S.holiday[d]); }
 function setHoliday(d, on){
-  if (on) { ensureDay(d); subjectRef.child('attendance/' + d + '/holiday').set(true); }
-  else subjectRef.child('attendance/' + d + '/holiday').remove();
+  if (on) { ensureDay(d); queueWrite('attendance/' + d + '/holiday', true); }
+  else queueWrite('attendance/' + d + '/holiday', null);
 }
 function toggle(id){
   if (isHoliday(curDate)) { alert('هذا اليوم عطلة، ما يسجل حضور أو غياب. الغي العطلة أول إذا تريد تسجل.'); return; }
@@ -480,11 +544,12 @@ function toggle(id){
   const s = S.students.find(x => x.id === id); if (!s) return;
   ensureDay(curDate);
   const pr = S.present[curDate] || {};
-  if (pr[id]) subjectRef.child('attendance/' + curDate + '/present/' + id).remove();
+  if (pr[id]) queueWrite('attendance/' + curDate + '/present/' + id, null);
   else {
-    subjectRef.child('attendance/' + curDate + '/present/' + id).set(true);
-    if ((S.excused[curDate]||{})[id]) subjectRef.child('attendance/' + curDate + '/excused/' + id).remove();
-    if (curDate < s.added) subjectRef.child('students/' + id + '/added').set(curDate);
+    const updates = {}; updates['attendance/' + curDate + '/present/' + id] = true;
+    if ((S.excused[curDate]||{})[id]) updates['attendance/' + curDate + '/excused/' + id] = null;
+    if (curDate < s.added) updates['students/' + id + '/added'] = curDate;
+    queueWriteMulti(updates);
   }
 }
 function toggleExcused(id){
@@ -493,11 +558,12 @@ function toggleExcused(id){
   const s = S.students.find(x => x.id === id); if (!s) return;
   ensureDay(curDate);
   const ex = S.excused[curDate] || {};
-  if (ex[id]) subjectRef.child('attendance/' + curDate + '/excused/' + id).remove();
+  if (ex[id]) queueWrite('attendance/' + curDate + '/excused/' + id, null);
   else {
-    subjectRef.child('attendance/' + curDate + '/excused/' + id).set(true);
-    if ((S.present[curDate]||{})[id]) subjectRef.child('attendance/' + curDate + '/present/' + id).remove();
-    if (curDate < s.added) subjectRef.child('students/' + id + '/added').set(curDate);
+    const updates = {}; updates['attendance/' + curDate + '/excused/' + id] = true;
+    if ((S.present[curDate]||{})[id]) updates['attendance/' + curDate + '/present/' + id] = null;
+    if (curDate < s.added) updates['students/' + id + '/added'] = curDate;
+    queueWriteMulti(updates);
   }
 }
 function editStudent(id){
@@ -509,20 +575,23 @@ function editStudent(id){
   if (!GROUPS.includes(g)) { alert('لازم تكتب "ولد" أو "بنات" بالضبط'); return; }
   const sec = prompt('الشعبة', s.section); if (sec === null) return;
   const se = sec.trim(); if (!se) { alert('الشعبة فارغة'); return; }
-  subjectRef.child('students/' + id).update({ name: nm, group: g, section: se });
+  queueWriteMulti({
+    ['students/' + id + '/name']: nm,
+    ['students/' + id + '/group']: g,
+    ['students/' + id + '/section']: se
+  });
 }
 function delStudent(id){
   const s = S.students.find(x => x.id === id); if (!s) return;
   if (!confirm('حذف الطالب «'+s.name+'» وكل سجله؟')) return;
   const updates = { ['students/' + id]: null };
-  S.days.forEach(d => { updates['attendance/' + d + '/present/' + id] = null; });
-  subjectRef.update(updates);
+  S.days.forEach(d => { updates['attendance/' + d + '/present/' + id] = null; updates['attendance/' + d + '/excused/' + id] = null; });
+  queueWriteMulti(updates);
 }
 function removeDay(d){
   if (!confirm('حذف يوم '+fmt(d)+' من السجل؟')) return;
-  subjectRef.child('attendance/' + d).remove().then(() => {
-    if (d === todayStr()) ensureDay(d); // اليوم الحالي يرجع يندرج لأن التطبيق مفتوح
-  });
+  queueWrite('attendance/' + d, null);
+  if (d === todayStr()) ensureDay(d); // اليوم الحالي يرجع يندرج لأن التطبيق مفتوح
 }
 
 /* ---------- العرض ---------- */
@@ -761,6 +830,8 @@ function restore(file){
         if (d.holiday && d.holiday[day]) raw.attendance[day].holiday = true;
       });
       subjectRef.set(raw);
+      remoteRaw = raw; pendingOps = []; saveJSON(outboxKey(curSubjectId), pendingOps); saveJSON(cacheKey(curSubjectId), remoteRaw);
+      recompute(); render();
     } catch (e) { alert('الملف مو صالح'); }
   };
   fr.readAsText(file);
@@ -794,7 +865,7 @@ let titleTimer;
 $('repTitle').addEventListener('input', e => {
   const v = e.target.value;
   clearTimeout(titleTimer);
-  titleTimer = setTimeout(() => { if (subjectRef) subjectRef.child('title').set(v); }, 500);
+  titleTimer = setTimeout(() => { if (curSubjectId) queueWrite('title', v); }, 500);
 });
 $('btnPrev').addEventListener('click', openPreview);
 $('btnXls').addEventListener('click', exportExcel);
